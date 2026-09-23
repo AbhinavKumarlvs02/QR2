@@ -266,9 +266,193 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+// const video = document.getElementById("video");
+// const status = document.getElementById("status");
+// const counter = document.getElementById("counter");
+
+// const ws = new WebSocket(
+//     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`
+// );
+
+// ws.binaryType = "arraybuffer";
+
+// let framesSent = 0;
+
+// ws.onopen = () => {
+//     status.textContent = "Connected";
+//     startCamera();
+// };
+
+// ws.onclose = () => {
+//     status.textContent = "Disconnected";
+// };
+
+// ws.onerror = () => {
+//     status.textContent = "Connection error";
+// };
+
+// async function startCamera() {
+
+//     try {
+
+//         const stream =
+//             await navigator.mediaDevices.getUserMedia({
+
+//                 video: {
+//                     facingMode: {
+//                         ideal: "environment"
+//                     },
+
+//                     width: {
+//                         ideal: 1280
+//                     },
+
+//                     height: {
+//                         ideal: 1280
+//                     }
+//                 },
+
+//                 audio: false
+//             });
+
+//         video.srcObject = stream;
+
+//         await video.play();
+
+//         status.textContent = "Camera active - place QR inside the box";
+
+//         startStreaming();
+
+//     } catch (error) {
+
+//         status.textContent =
+//             "Camera error: " + error.message;
+
+//     }
+// }
+
+
+// /*
+//     Canvas used to extract only the box.
+// */
+
+// const canvas = document.createElement("canvas");
+
+// const ctx = canvas.getContext("2d", {
+//     alpha: false
+// });
+
+
+// function startStreaming() {
+
+//     setInterval(() => {
+
+//         if (
+//             ws.readyState !== WebSocket.OPEN ||
+//             video.readyState < 2 ||
+//             !video.videoWidth
+//         ) {
+//             return;
+//         }
+
+//         const videoWidth = video.videoWidth;
+//         const videoHeight = video.videoHeight;
+
+//         /*
+//             The visible box is:
+
+//             width  = 70%
+//             left   = 15%
+//             top    = centered
+//         */
+
+//         const boxWidth = videoWidth * 0.70;
+
+//         const boxHeight = boxWidth;
+
+//         const boxX =
+//             (videoWidth - boxWidth) / 2;
+
+//         const boxY =
+//             (videoHeight - boxHeight) / 2;
+
+//         /*
+//             Output resolution.
+//             Keep it square because QR is square.
+//         */
+
+//         const outputSize = 600;
+
+//         canvas.width = outputSize;
+//         canvas.height = outputSize;
+
+//         /*
+//             Crop only the QR box.
+//         */
+
+//         ctx.drawImage(
+//             video,
+
+//             boxX,
+//             boxY,
+//             boxWidth,
+//             boxHeight,
+
+//             0,
+//             0,
+//             outputSize,
+//             outputSize
+//         );
+
+//         /*
+//             PNG keeps QR pixels lossless.
+//         */
+
+//         canvas.toBlob(
+//             async (blob) => {
+
+//                 if (
+//                     blob &&
+//                     ws.readyState === WebSocket.OPEN
+//                 ) {
+
+//                     const buffer =
+//                         await blob.arrayBuffer();
+
+//                     ws.send(buffer);
+
+//                     framesSent++;
+
+//                     counter.textContent =
+//                         "Frames sent: " + framesSent;
+//                 }
+
+//             },
+//             "image/png"
+//         );
+
+
+
+
+
+
 const video = document.getElementById("video");
 const status = document.getElementById("status");
 const counter = document.getElementById("counter");
+
+const zoomSlider = document.getElementById("zoom");
+const zoomValue = document.getElementById("zoomValue");
 
 const ws = new WebSocket(
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`
@@ -277,19 +461,94 @@ const ws = new WebSocket(
 ws.binaryType = "arraybuffer";
 
 let framesSent = 0;
+let videoTrack = null;
+
+zoomSlider.addEventListener("input", async () => {
+
+    const zoom = Number(zoomSlider.value);
+
+    zoomValue.textContent =
+        zoom.toFixed(1) + "x";
+
+    /*
+        Try to use the phone's native
+        camera zoom if supported.
+    */
+
+    if (videoTrack) {
+
+        const capabilities =
+            videoTrack.getCapabilities();
+
+        if (
+            capabilities.zoom &&
+            capabilities.zoom.min !== undefined
+        ) {
+
+            const nativeZoom =
+                Math.min(
+                    Math.max(
+                        zoom,
+                        capabilities.zoom.min
+                    ),
+                    capabilities.zoom.max
+                );
+
+            try {
+
+                await videoTrack.applyConstraints({
+                    advanced: [
+                        {
+                            zoom: nativeZoom
+                        }
+                    ]
+                });
+
+                return;
+
+            } catch (e) {
+                console.log(
+                    "Native zoom unavailable"
+                );
+            }
+        }
+    }
+
+    /*
+        Fallback:
+        digitally zoom the displayed video.
+    */
+
+    video.style.transform =
+        `scale(${zoom})`;
+});
+
 
 ws.onopen = () => {
-    status.textContent = "Connected";
+
+    status.textContent =
+        "Connected";
+
     startCamera();
+
 };
+
 
 ws.onclose = () => {
-    status.textContent = "Disconnected";
+
+    status.textContent =
+        "Disconnected";
+
 };
 
+
 ws.onerror = () => {
-    status.textContent = "Connection error";
+
+    status.textContent =
+        "Connection error";
+
 };
+
 
 async function startCamera() {
 
@@ -308,18 +567,24 @@ async function startCamera() {
                     },
 
                     height: {
-                        ideal: 1280
+                        ideal: 720
                     }
                 },
 
                 audio: false
+
             });
+
 
         video.srcObject = stream;
 
+        videoTrack =
+            stream.getVideoTracks()[0];
+
         await video.play();
 
-        status.textContent = "Camera active - place QR inside the box";
+        status.textContent =
+            "Camera active - place QR inside the box";
 
         startStreaming();
 
@@ -329,18 +594,22 @@ async function startCamera() {
             "Camera error: " + error.message;
 
     }
+
 }
 
 
 /*
-    Canvas used to extract only the box.
+    Canvas used to extract only
+    the QR box.
 */
 
-const canvas = document.createElement("canvas");
+const canvas =
+    document.createElement("canvas");
 
-const ctx = canvas.getContext("2d", {
-    alpha: false
-});
+const ctx =
+    canvas.getContext("2d", {
+        alpha: false
+    });
 
 
 function startStreaming() {
@@ -355,20 +624,24 @@ function startStreaming() {
             return;
         }
 
-        const videoWidth = video.videoWidth;
-        const videoHeight = video.videoHeight;
+
+        const videoWidth =
+            video.videoWidth;
+
+        const videoHeight =
+            video.videoHeight;
+
 
         /*
-            The visible box is:
-
-            width  = 70%
-            left   = 15%
-            top    = centered
+            Visible QR box.
         */
 
-        const boxWidth = videoWidth * 0.70;
+        const boxWidth =
+            videoWidth * 0.70;
 
-        const boxHeight = boxWidth;
+        const boxHeight =
+            boxWidth;
+
 
         const boxX =
             (videoWidth - boxWidth) / 2;
@@ -376,21 +649,26 @@ function startStreaming() {
         const boxY =
             (videoHeight - boxHeight) / 2;
 
+
         /*
             Output resolution.
-            Keep it square because QR is square.
         */
 
         const outputSize = 600;
 
-        canvas.width = outputSize;
-        canvas.height = outputSize;
+        canvas.width =
+            outputSize;
+
+        canvas.height =
+            outputSize;
+
 
         /*
-            Crop only the QR box.
+            Capture only the box.
         */
 
         ctx.drawImage(
+
             video,
 
             boxX,
@@ -402,18 +680,22 @@ function startStreaming() {
             0,
             outputSize,
             outputSize
+
         );
 
+
         /*
-            PNG keeps QR pixels lossless.
+            Lossless PNG.
         */
 
         canvas.toBlob(
+
             async (blob) => {
 
                 if (
                     blob &&
-                    ws.readyState === WebSocket.OPEN
+                    ws.readyState ===
+                    WebSocket.OPEN
                 ) {
 
                     const buffer =
@@ -424,13 +706,19 @@ function startStreaming() {
                     framesSent++;
 
                     counter.textContent =
-                        "Frames sent: " + framesSent;
+                        "Frames sent: " +
+                        framesSent;
                 }
 
             },
+
             "image/png"
+
         );
 
     }, 100);
+
+}
+//     }, 100);
 
 }
