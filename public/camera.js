@@ -454,38 +454,150 @@ const counter = document.getElementById("counter");
 const zoomSlider = document.getElementById("zoom");
 const zoomValue = document.getElementById("zoomValue");
 
-const ws = new WebSocket(
-    `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`
-);
-
-ws.binaryType = "arraybuffer";
-
+let ws = null;
 let framesSent = 0;
+let stream = null;
 let videoTrack = null;
+let streamingStarted = false;
 
-zoomSlider.addEventListener("input", async () => {
 
-    const zoom = Number(zoomSlider.value);
+/* =========================
+   CAMERA STARTS IMMEDIATELY
+   ========================= */
 
-    zoomValue.textContent =
-        zoom.toFixed(1) + "x";
+async function startCamera() {
 
-    /*
-        Try to use the phone's native
-        camera zoom if supported.
-    */
+    try {
 
-    if (videoTrack) {
+        status.textContent = "Requesting camera...";
+
+        stream = await navigator.mediaDevices.getUserMedia({
+
+            video: {
+                facingMode: {
+                    ideal: "environment"
+                },
+
+                width: {
+                    ideal: 1280
+                },
+
+                height: {
+                    ideal: 720
+                }
+            },
+
+            audio: false
+        });
+
+        video.srcObject = stream;
+
+        videoTrack =
+            stream.getVideoTracks()[0];
+
+        await video.play();
+
+        status.textContent =
+            "Camera active - place QR inside the box";
+
+        connectWebSocket();
+
+    } catch (error) {
+
+        console.error(error);
+
+        status.textContent =
+            "Camera error: " + error.message;
+    }
+}
+
+
+/* =========================
+   WEBSOCKET
+   ========================= */
+
+function connectWebSocket() {
+
+    const protocol =
+        location.protocol === "https:"
+            ? "wss"
+            : "ws";
+
+    ws = new WebSocket(
+        `${protocol}://${location.host}`
+    );
+
+    ws.binaryType = "arraybuffer";
+
+
+    ws.onopen = () => {
+
+        status.textContent =
+            "Camera active - LIVE";
+
+        if (!streamingStarted) {
+
+            streamingStarted = true;
+
+            startStreaming();
+        }
+    };
+
+
+    ws.onclose = () => {
+
+        status.textContent =
+            "Camera active - reconnecting...";
+
+        streamingStarted = false;
+
+        setTimeout(connectWebSocket, 2000);
+    };
+
+
+    ws.onerror = () => {
+
+        console.log(
+            "WebSocket error"
+        );
+    };
+}
+
+
+/* =========================
+   ZOOM
+   ========================= */
+
+zoomSlider.addEventListener(
+    "input",
+    async () => {
+
+        const zoom =
+            Number(zoomSlider.value);
+
+        zoomValue.textContent =
+            zoom.toFixed(1) + "x";
+
+
+        if (!videoTrack) {
+            return;
+        }
+
 
         const capabilities =
             videoTrack.getCapabilities();
+
+
+        /*
+           Prefer real camera zoom.
+        */
 
         if (
             capabilities.zoom &&
             capabilities.zoom.min !== undefined
         ) {
 
-            const nativeZoom =
+            const actualZoom =
                 Math.min(
                     Math.max(
                         zoom,
@@ -499,109 +611,43 @@ zoomSlider.addEventListener("input", async () => {
                 await videoTrack.applyConstraints({
                     advanced: [
                         {
-                            zoom: nativeZoom
+                            zoom: actualZoom
                         }
                     ]
                 });
 
+                /*
+                   Do NOT transform the video
+                   when native zoom works.
+                */
+
+                video.style.transform =
+                    "none";
+
                 return;
 
-            } catch (e) {
+            } catch (error) {
+
                 console.log(
-                    "Native zoom unavailable"
+                    "Native zoom failed"
                 );
             }
         }
+
+
+        /*
+           Fallback digital zoom.
+        */
+
+        video.style.transform =
+            `scale(${zoom})`;
     }
-
-    /*
-        Fallback:
-        digitally zoom the displayed video.
-    */
-
-    video.style.transform =
-        `scale(${zoom})`;
-});
+);
 
 
-ws.onopen = () => {
-
-    status.textContent =
-        "Connected";
-
-    startCamera();
-
-};
-
-
-ws.onclose = () => {
-
-    status.textContent =
-        "Disconnected";
-
-};
-
-
-ws.onerror = () => {
-
-    status.textContent =
-        "Connection error";
-
-};
-
-
-async function startCamera() {
-
-    try {
-
-        const stream =
-            await navigator.mediaDevices.getUserMedia({
-
-                video: {
-                    facingMode: {
-                        ideal: "environment"
-                    },
-
-                    width: {
-                        ideal: 1280
-                    },
-
-                    height: {
-                        ideal: 720
-                    }
-                },
-
-                audio: false
-
-            });
-
-
-        video.srcObject = stream;
-
-        videoTrack =
-            stream.getVideoTracks()[0];
-
-        await video.play();
-
-        status.textContent =
-            "Camera active - place QR inside the box";
-
-        startStreaming();
-
-    } catch (error) {
-
-        status.textContent =
-            "Camera error: " + error.message;
-
-    }
-
-}
-
-
-/*
-    Canvas used to extract only
-    the QR box.
-*/
+/* =========================
+   STREAM QR BOX
+   ========================= */
 
 const canvas =
     document.createElement("canvas");
@@ -617,6 +663,7 @@ function startStreaming() {
     setInterval(() => {
 
         if (
+            !ws ||
             ws.readyState !== WebSocket.OPEN ||
             video.readyState < 2 ||
             !video.videoWidth
@@ -633,7 +680,8 @@ function startStreaming() {
 
 
         /*
-            Visible QR box.
+           The QR box is always
+           70% of the camera width.
         */
 
         const boxWidth =
@@ -651,7 +699,7 @@ function startStreaming() {
 
 
         /*
-            Output resolution.
+           Output image.
         */
 
         const outputSize = 600;
@@ -664,7 +712,7 @@ function startStreaming() {
 
 
         /*
-            Capture only the box.
+           Crop exactly the box.
         */
 
         ctx.drawImage(
@@ -680,12 +728,11 @@ function startStreaming() {
             0,
             outputSize,
             outputSize
-
         );
 
 
         /*
-            Lossless PNG.
+           Lossless PNG.
         */
 
         canvas.toBlob(
@@ -694,14 +741,14 @@ function startStreaming() {
 
                 if (
                     blob &&
+                    ws &&
                     ws.readyState ===
                     WebSocket.OPEN
                 ) {
 
-                    const buffer =
-                        await blob.arrayBuffer();
-
-                    ws.send(buffer);
+                    ws.send(
+                        await blob.arrayBuffer()
+                    );
 
                     framesSent++;
 
@@ -717,8 +764,11 @@ function startStreaming() {
         );
 
     }, 100);
-
 }
-//     }, 100);
 
-}
+
+/* =========================
+   START
+   ========================= */
+
+startCamera();
