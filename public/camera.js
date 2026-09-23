@@ -24,8 +24,251 @@
 // [src,pts,det,sp,dp,M,dst].forEach(x=>x.delete())}
 // setInterval(send,200);
 
+
+
+
+
+
+
+// const video = document.getElementById("video");
+// const status = document.getElementById("status");
+
+// const ws = new WebSocket(
+//     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`
+// );
+
+// ws.binaryType = "arraybuffer";
+
+// let cvReady = false;
+// let detector = null;
+// let lastPoints = null;
+// let lastSent = 0;
+
+// function ready() {
+//     cvReady = true;
+//     detector = new cv.QRCodeDetector();
+//     status.textContent = "OpenCV ready";
+//     startCamera();
+// }
+
+// if (typeof cv !== "undefined") {
+//     cv.onRuntimeInitialized = ready;
+// } else {
+//     const timer = setInterval(() => {
+//         if (typeof cv !== "undefined") {
+//             clearInterval(timer);
+//             cv.onRuntimeInitialized = ready;
+//         }
+//     }, 100);
+// }
+
+// ws.onopen = () => {
+//     status.textContent = "Connected";
+// };
+
+// ws.onclose = () => {
+//     status.textContent = "Disconnected";
+// };
+
+// async function startCamera() {
+//     try {
+//         video.srcObject = await navigator.mediaDevices.getUserMedia({
+//             video: {
+//                 facingMode: { ideal: "environment" },
+//                 width: { ideal: 1920 },
+//                 height: { ideal: 1080 }
+//             },
+//             audio: false
+//         });
+
+//         status.textContent = "Camera active";
+//     } catch (e) {
+//         status.textContent = "Camera error: " + e.message;
+//     }
+// }
+
+// const canvas = document.createElement("canvas");
+// const ctx = canvas.getContext("2d");
+
+// function orderPoints(points) {
+//     const sorted = points.slice().sort(
+//         (a, b) => (a.x + a.y) - (b.x + b.y)
+//     );
+
+//     const tl = sorted[0];
+//     const br = sorted[3];
+
+//     const other = [sorted[1], sorted[2]].sort(
+//         (a, b) => (a.x - a.y) - (b.x - b.y)
+//     );
+
+//     return [tl, other[0], br, other[1]];
+// }
+
+// function distance(a, b) {
+//     return Math.hypot(a.x - b.x, a.y - b.y);
+// }
+
+// function sendQR() {
+
+//     if (
+//         !cvReady ||
+//         !detector ||
+//         ws.readyState !== WebSocket.OPEN ||
+//         video.readyState < 2 ||
+//         !video.videoWidth
+//     ) {
+//         return;
+//     }
+
+//     canvas.width = video.videoWidth;
+//     canvas.height = video.videoHeight;
+
+//     ctx.drawImage(
+//         video,
+//         0,
+//         0,
+//         canvas.width,
+//         canvas.height
+//     );
+
+//     const src = cv.imread(canvas);
+
+//     const points = new cv.Mat();
+
+//     let found = false;
+
+//     try {
+//         found = detector.detect(src, points);
+//     } catch (e) {
+//         found = false;
+//     }
+
+//     if (found && !points.empty() && points.data32F.length >= 8) {
+
+//         const data = points.data32F;
+
+//         const detected = [];
+
+//         for (let i = 0; i < 4; i++) {
+//             detected.push({
+//                 x: data[i * 2],
+//                 y: data[i * 2 + 1]
+//             });
+//         }
+
+//         lastPoints = orderPoints(detected);
+
+//         status.textContent = "QR detected";
+//     }
+
+//     /*
+//        If detection fails for one or two frames,
+//        use the previous QR position.
+//     */
+
+//     if (!lastPoints) {
+//         src.delete();
+//         points.delete();
+//         return;
+//     }
+
+//     const p = lastPoints;
+
+//     const top = distance(p[0], p[1]);
+//     const bottom = distance(p[3], p[2]);
+//     const left = distance(p[0], p[3]);
+//     const right = distance(p[1], p[2]);
+
+//     const size = Math.max(
+//         top,
+//         bottom,
+//         left,
+//         right
+//     );
+
+//     const n = Math.max(
+//         400,
+//         Math.min(1400, Math.round(size))
+//     );
+
+//     const srcPts = cv.matFromArray(
+//         4,
+//         1,
+//         cv.CV_32FC2,
+//         [
+//             p[0].x, p[0].y,
+//             p[1].x, p[1].y,
+//             p[2].x, p[2].y,
+//             p[3].x, p[3].y
+//         ]
+//     );
+
+//     const dstPts = cv.matFromArray(
+//         4,
+//         1,
+//         cv.CV_32FC2,
+//         [
+//             0, 0,
+//             n - 1, 0,
+//             n - 1, n - 1,
+//             0, n - 1
+//         ]
+//     );
+
+//     const matrix = cv.getPerspectiveTransform(
+//         srcPts,
+//         dstPts
+//     );
+
+//     const dst = new cv.Mat();
+
+//     cv.warpPerspective(
+//         src,
+//         dst,
+//         matrix,
+//         new cv.Size(n, n),
+//         cv.INTER_LINEAR,
+//         cv.BORDER_CONSTANT,
+//         new cv.Scalar(255, 255, 255, 255)
+//     );
+
+//     const output = document.createElement("canvas");
+
+//     output.width = n;
+//     output.height = n;
+
+//     cv.imshow(output, dst);
+
+//     output.toBlob(
+//         async blob => {
+
+//             if (
+//                 blob &&
+//                 ws.readyState === WebSocket.OPEN
+//             ) {
+//                 ws.send(await blob.arrayBuffer());
+//             }
+
+//         },
+//         "image/png"
+//     );
+
+//     src.delete();
+//     points.delete();
+//     srcPts.delete();
+//     dstPts.delete();
+//     matrix.delete();
+//     dst.delete();
+// }
+
+// setInterval(sendQR, 100);
+
+
+
 const video = document.getElementById("video");
 const status = document.getElementById("status");
+const counter = document.getElementById("counter");
 
 const ws = new WebSocket(
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`
@@ -33,227 +276,161 @@ const ws = new WebSocket(
 
 ws.binaryType = "arraybuffer";
 
-let cvReady = false;
-let detector = null;
-let lastPoints = null;
-let lastSent = 0;
-
-function ready() {
-    cvReady = true;
-    detector = new cv.QRCodeDetector();
-    status.textContent = "OpenCV ready";
-    startCamera();
-}
-
-if (typeof cv !== "undefined") {
-    cv.onRuntimeInitialized = ready;
-} else {
-    const timer = setInterval(() => {
-        if (typeof cv !== "undefined") {
-            clearInterval(timer);
-            cv.onRuntimeInitialized = ready;
-        }
-    }, 100);
-}
+let framesSent = 0;
 
 ws.onopen = () => {
     status.textContent = "Connected";
+    startCamera();
 };
 
 ws.onclose = () => {
     status.textContent = "Disconnected";
 };
 
-async function startCamera() {
-    try {
-        video.srcObject = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: { ideal: "environment" },
-                width: { ideal: 1920 },
-                height: { ideal: 1080 }
-            },
-            audio: false
-        });
+ws.onerror = () => {
+    status.textContent = "Connection error";
+};
 
-        status.textContent = "Camera active";
-    } catch (e) {
-        status.textContent = "Camera error: " + e.message;
+async function startCamera() {
+
+    try {
+
+        const stream =
+            await navigator.mediaDevices.getUserMedia({
+
+                video: {
+                    facingMode: {
+                        ideal: "environment"
+                    },
+
+                    width: {
+                        ideal: 1280
+                    },
+
+                    height: {
+                        ideal: 1280
+                    }
+                },
+
+                audio: false
+            });
+
+        video.srcObject = stream;
+
+        await video.play();
+
+        status.textContent = "Camera active - place QR inside the box";
+
+        startStreaming();
+
+    } catch (error) {
+
+        status.textContent =
+            "Camera error: " + error.message;
+
     }
 }
+
+
+/*
+    Canvas used to extract only the box.
+*/
 
 const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d");
 
-function orderPoints(points) {
-    const sorted = points.slice().sort(
-        (a, b) => (a.x + a.y) - (b.x + b.y)
-    );
+const ctx = canvas.getContext("2d", {
+    alpha: false
+});
 
-    const tl = sorted[0];
-    const br = sorted[3];
 
-    const other = [sorted[1], sorted[2]].sort(
-        (a, b) => (a.x - a.y) - (b.x - b.y)
-    );
+function startStreaming() {
 
-    return [tl, other[0], br, other[1]];
-}
+    setInterval(() => {
 
-function distance(a, b) {
-    return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function sendQR() {
-
-    if (
-        !cvReady ||
-        !detector ||
-        ws.readyState !== WebSocket.OPEN ||
-        video.readyState < 2 ||
-        !video.videoWidth
-    ) {
-        return;
-    }
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    ctx.drawImage(
-        video,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-    );
-
-    const src = cv.imread(canvas);
-
-    const points = new cv.Mat();
-
-    let found = false;
-
-    try {
-        found = detector.detect(src, points);
-    } catch (e) {
-        found = false;
-    }
-
-    if (found && !points.empty() && points.data32F.length >= 8) {
-
-        const data = points.data32F;
-
-        const detected = [];
-
-        for (let i = 0; i < 4; i++) {
-            detected.push({
-                x: data[i * 2],
-                y: data[i * 2 + 1]
-            });
+        if (
+            ws.readyState !== WebSocket.OPEN ||
+            video.readyState < 2 ||
+            !video.videoWidth
+        ) {
+            return;
         }
 
-        lastPoints = orderPoints(detected);
+        const videoWidth = video.videoWidth;
+        const videoHeight = video.videoHeight;
 
-        status.textContent = "QR detected";
-    }
+        /*
+            The visible box is:
 
-    /*
-       If detection fails for one or two frames,
-       use the previous QR position.
-    */
+            width  = 70%
+            left   = 15%
+            top    = centered
+        */
 
-    if (!lastPoints) {
-        src.delete();
-        points.delete();
-        return;
-    }
+        const boxWidth = videoWidth * 0.70;
 
-    const p = lastPoints;
+        const boxHeight = boxWidth;
 
-    const top = distance(p[0], p[1]);
-    const bottom = distance(p[3], p[2]);
-    const left = distance(p[0], p[3]);
-    const right = distance(p[1], p[2]);
+        const boxX =
+            (videoWidth - boxWidth) / 2;
 
-    const size = Math.max(
-        top,
-        bottom,
-        left,
-        right
-    );
+        const boxY =
+            (videoHeight - boxHeight) / 2;
 
-    const n = Math.max(
-        400,
-        Math.min(1400, Math.round(size))
-    );
+        /*
+            Output resolution.
+            Keep it square because QR is square.
+        */
 
-    const srcPts = cv.matFromArray(
-        4,
-        1,
-        cv.CV_32FC2,
-        [
-            p[0].x, p[0].y,
-            p[1].x, p[1].y,
-            p[2].x, p[2].y,
-            p[3].x, p[3].y
-        ]
-    );
+        const outputSize = 600;
 
-    const dstPts = cv.matFromArray(
-        4,
-        1,
-        cv.CV_32FC2,
-        [
-            0, 0,
-            n - 1, 0,
-            n - 1, n - 1,
-            0, n - 1
-        ]
-    );
+        canvas.width = outputSize;
+        canvas.height = outputSize;
 
-    const matrix = cv.getPerspectiveTransform(
-        srcPts,
-        dstPts
-    );
+        /*
+            Crop only the QR box.
+        */
 
-    const dst = new cv.Mat();
+        ctx.drawImage(
+            video,
 
-    cv.warpPerspective(
-        src,
-        dst,
-        matrix,
-        new cv.Size(n, n),
-        cv.INTER_LINEAR,
-        cv.BORDER_CONSTANT,
-        new cv.Scalar(255, 255, 255, 255)
-    );
+            boxX,
+            boxY,
+            boxWidth,
+            boxHeight,
 
-    const output = document.createElement("canvas");
+            0,
+            0,
+            outputSize,
+            outputSize
+        );
 
-    output.width = n;
-    output.height = n;
+        /*
+            PNG keeps QR pixels lossless.
+        */
 
-    cv.imshow(output, dst);
+        canvas.toBlob(
+            async (blob) => {
 
-    output.toBlob(
-        async blob => {
+                if (
+                    blob &&
+                    ws.readyState === WebSocket.OPEN
+                ) {
 
-            if (
-                blob &&
-                ws.readyState === WebSocket.OPEN
-            ) {
-                ws.send(await blob.arrayBuffer());
-            }
+                    const buffer =
+                        await blob.arrayBuffer();
 
-        },
-        "image/png"
-    );
+                    ws.send(buffer);
 
-    src.delete();
-    points.delete();
-    srcPts.delete();
-    dstPts.delete();
-    matrix.delete();
-    dst.delete();
+                    framesSent++;
+
+                    counter.textContent =
+                        "Frames sent: " + framesSent;
+                }
+
+            },
+            "image/png"
+        );
+
+    }, 100);
+
 }
-
-setInterval(sendQR, 100);
